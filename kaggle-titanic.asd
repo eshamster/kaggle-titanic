@@ -17,6 +17,7 @@
   :author "eshamster"
   :license ""
   :depends-on (:cl-csv
+               :cl-ppcre
                :alexandria
                :anaphora
                :cl-naive-bayes)
