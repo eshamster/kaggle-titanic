@@ -3,9 +3,11 @@
   (:use :cl)
   (:export :main)
   (:import-from :cl-csv
-                :read-csv)
+                :read-csv
+                :write-csv)
   (:import-from :alexandria
-                :once-only)
+                :once-only
+                :with-gensyms)
   (:import-from :anaphora
                 :aif
                 :it))
@@ -30,35 +32,52 @@
                          (find-target-value ,(car process) ,head-line ,data-line)))
                      body))))
 
-(defun learn (head-line data-lines)
-  (labels ((add-name (name value)
-             (if (null value)
-                 nil
-                 (format nil "~A:~A" name value)))
-           (round-num (target-str interval &key (scale 1))
-             (if (= (length target-str) 0)
-                 (return-from round-num nil))
-             (* interval (round
-                          (/ (* (read-from-string target-str) scale)
-                             interval)))))
-    (dolist (line data-lines)
-      (print
-       (convert-raw-data-one-line head-line line
-         ("Survived" it)
-         ("Pclass" (add-name "class" it))
-         ("Sex" it)
-         ("Age" (add-name "Age" (round-num it 5)))
-         ("SibSp" (add-name "SibNum" it))
-         ("Parch" (add-name "ParChNum" it))
-         ("Fare" (add-name "Fare" (round-num it 5)))
-         ("Embarked" (add-name "Emb" it)))))))
+(defmacro do-converted-line-data ((value data-path) &body body)
+  (with-gensyms (data head-line data-lines line)
+    `(labels ((add-name (name value)
+                (if (null value)
+                    nil
+                    (format nil "~A:~A" name value)))
+              (round-num (target-str interval &key (scale 1))
+                (if (= (length target-str) 0)
+                    (return-from round-num nil))
+                (* interval (round
+                             (/ (* (read-from-string target-str) scale)
+                                interval)))))
+       (let* ((,data (read-csv (make-my-path ,data-path)))
+              (,head-line (car ,data))
+              (,data-lines (cdr ,data)))
+         (dolist (,line ,data-lines)
+           (let ((,value (remove-if #'null
+                                    (convert-raw-data-one-line ,head-line ,line
+                                      ("PassengerId" it)
+                                      ("Survived" it)
+                                      ("Pclass" (add-name "class" it))
+                                      ("Sex" it)
+                                      ("Age" (add-name "Age" (round-num it 5)))
+                                      ("SibSp" (add-name "SibNum" it))
+                                      ("Parch" (add-name "ParChNum" it))
+                                      ("Fare" (add-name "Fare" (round-num it 5)))
+                                      ("Embarked" (add-name "Emb" it))))))
+             ,@body))))))
+
+(defun learn (store learn-path)
+  (do-converted-line-data (line-lst learn-path)
+    (nbayes:learn-a-document store (cddr line-lst) (cadr line-lst)))
+  (print store))
+
+(defun classify (store test-path)
+  (with-open-file (out (make-my-path "resources/result.csv")
+                       :direction :output
+                       :if-exists :overwrite)
+    (format out "PassengerId,Survived~%")
+    (do-converted-line-data (line-lst test-path)
+      (format out "~D,~D~%"
+              (car line-lst)
+              (car (nbayes:sort-category-by-prob store (cdr line-lst)))))))
 
 (defun main ()
-  (let* ((data (read-csv (make-my-path "resources/train.csv")))
-         (head-line (car data))
-         (rest-line (subseq data 1 10)))
-    (print head-line)
-    (print rest-line)
-    (format t "~%-------------------~%")
-    (learn head-line rest-line))
+  (let ((store (nbayes:make-learned-store)))
+    (learn store "resources/train.csv")
+    (classify store "resources/test.csv"))
   t)

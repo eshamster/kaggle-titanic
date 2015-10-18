@@ -18,7 +18,8 @@
   :license ""
   :depends-on (:cl-csv
                :alexandria
-               :anaphora)
+               :anaphora
+               :cl-naive-bayes)
   :components ((:module "src"
                 :components
                 ((:file "kaggle-titanic"))))
