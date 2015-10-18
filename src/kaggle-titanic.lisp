@@ -2,7 +2,8 @@
 (defpackage kaggle-titanic
   (:use :cl
         :cl-ppcre)
-  (:export :main)
+  (:export :main
+           :test)
   (:import-from :cl-csv
                 :read-csv
                 :write-csv)
@@ -53,22 +54,30 @@
   (if cabin
       (ppcre:scan-to-strings "[A-Z]" cabin)))
 
-(defmacro do-converted-line-data ((value data-path) &body body)
-  (with-gensyms (data head-line data-lines line)
-    `(labels ((add-name (name value)
-                (if (or (null value) (equal value ""))
-                    nil
-                    (format nil "~A:~A" name value)))
-              (round-num (target-str interval &key (scale 1))
-                (if (= (length target-str) 0)
-                    (return-from round-num nil))
-                (* interval (round
-                             (/ (* (read-from-string target-str) scale)
-                                interval)))))
-       (let* ((,data (read-csv (make-my-path ,data-path)))
-              (,head-line (car ,data))
-              (,data-lines (cdr ,data)))
-         (dolist (,line ,data-lines)
+(defun add-name (name value)
+  (if (or (null value) (equal value ""))
+      nil
+      (format nil "~A:~A" name value)))
+
+(defun round-num (target-str interval &key (scale 1))
+  (if (= (length target-str) 0)
+      (return-from round-num nil))
+  (* interval (round
+               (/ (* (read-from-string target-str) scale)
+                  interval))))
+
+(defmacro do-converted-line-data ((value data-path &key (offset-ratio 0) (use-ratio 1)) &body body)
+  (with-gensyms (data head-line data-lines line offset max-use count)
+    `(let* ((,data (read-csv (make-my-path ,data-path)))
+            (,head-line (car ,data))
+            (,data-lines (cdr ,data))
+            (,offset (round (* (length ,data-lines) (max 0 ,offset-ratio))))
+            (,max-use (round (* (length ,data-lines) (min 1 (+ ,offset-ratio ,use-ratio)))))
+            (,count -1))
+       (dolist (,line ,data-lines)
+         (incf ,count)
+         (when (and (<= ,offset ,count)
+                    (<= ,count ,max-use))
            (let ((,value
                   (remove-if
                    #'null
@@ -81,18 +90,21 @@
                                               (format nil "~A~A"
                                                       sex
                                                       (round-num age 5))))
+                     ("Age" (add-name "Age" (round-num it 5)))
                      ("SibSp" (add-name "SibNum" it))
                      ("Parch" (add-name "ParChNum" it))
-                     ("Fare" (add-name "Fare" (round-num it 5)))
+                     ("Fare" (add-name "Fare" (round-num it 10)))
                      ("Cabin" (add-name "Cabin" (extract-cabin it)))
                      ("Cabin" (add-name "Cabin-raw" it))
                      ("Embarked" (add-name "Emb" it))))))
              ,@body))))))
 
-(defun learn (store learn-path)
+(defun learn (store learn-path &optional (offset-ratio 0) (use-ratio 1))
   (let ((count 0)
         (sampling-interval 100))
-    (do-converted-line-data (line-lst learn-path)
+    (do-converted-line-data (line-lst learn-path
+                                      :offset-ratio offset-ratio
+                                      :use-ratio use-ratio)
       (when (= (mod count sampling-interval) 0)
         (format t "~%Sample: ~D~%" line-lst))
       (nbayes:learn-a-document store (cddr line-lst) (cadr line-lst))
@@ -119,3 +131,18 @@
     (learn store "resources/train.csv")
     (classify store "resources/test.csv"))
   t)
+
+(defun test ()
+  (let ((store (nbayes:make-learned-store)))
+    (learn store "resources/train.csv" 0 0.5)
+    (let ((success 0)
+          (count 0))
+      (do-converted-line-data (line-lst "resources/train.csv"
+                                        :offset-ratio 0.5
+                                        :use-ratio 0.5)
+        (let ((result (car (nbayes:sort-category-by-prob store (cddr line-lst))))
+              (expected (cadr line-lst)))
+          (when (equal result expected)
+            (incf success))
+          (incf count)))
+      (format t "~%~D/~D (~A)~%" success count (float (/ success count))))))
