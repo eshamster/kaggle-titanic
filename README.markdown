@@ -32,7 +32,7 @@ This project exports two functions, "main" and "cross-validate".
 
 This depends on [cl-naive-bayes](https://github.com/eshamster/cl-naive-bayes) that is not registered to quicklisp repository.
 
-So "git clone" both **this** and **cl-naive-bayes** projects under the proper directory (typically it is "~/quicklisp/local-projects" or "~/.roswell/local-projecs"), then
+So "git clone" both **this** and **cl-naive-bayes** projects under the proper directory (typically it is "~/quicklisp/local-projects" or "~/.roswell/local-projects"), then
 
 ```lisp
 (ql:quickload :kaggle-titanic)
