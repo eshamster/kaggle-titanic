@@ -3,14 +3,15 @@
   (:use :cl
         :cl-ppcre)
   (:export :main
-           :test)
+           :cross-validate)
   (:import-from :cl-csv
                 :read-csv
                 :write-csv)
   (:import-from :alexandria
                 :once-only
                 :with-gensyms
-                :compose)
+                :compose
+                :iota)
   (:import-from :anaphora
                 :aif
                 :it))
@@ -43,7 +44,7 @@
                        (lambda (arg) 
                          `(find-target-value ,arg ,head-line ,data-line))
                        find-lst))))
-                     body))))
+              body))))
 
 (defun extract-miss-or-mrs (name)
   (multiple-value-bind (replaced found)
@@ -86,14 +87,17 @@
                      ("Survived" it)
                      ("Pclass" (add-name "class" it))
                      ("Name" (extract-miss-or-mrs it))
+                     ("Sex" it)
                      (("Sex" "Age") (add-name "Sex-Age"
                                               (format nil "~A~A"
                                                       sex
                                                       (round-num age 5))))
                      ("Age" (add-name "Age" (round-num it 5)))
-                     ("SibSp" (add-name "SibNum" it))
-                     ("Parch" (add-name "ParChNum" it))
-                     ("Fare" (add-name "Fare" (round-num it 10)))
+                     (("SibSp" "Parch") (add-name "Sib-Par"
+                                                  (format nil "~A-~A" sibsp parch)))
+                     ("Parch" (add-name "Par" it))
+                     ("SibSp" (add-name "Sib" it))
+                     ; ("Fare" (add-name "Fare" (round-num it 10)))
                      ("Cabin" (add-name "Cabin" (extract-cabin it)))
                      ("Cabin" (add-name "Cabin-raw" it))
                      ("Embarked" (add-name "Emb" it))))))
@@ -108,8 +112,7 @@
       (when (= (mod count sampling-interval) 0)
         (format t "~%Sample: ~D~%" line-lst))
       (nbayes:learn-a-document store (cddr line-lst) (cadr line-lst))
-      (incf count)))
-  (print store))
+      (incf count))))
 
 (defun classify (store test-path)
   (with-open-file (out (make-my-path "resources/result.csv")
@@ -132,17 +135,26 @@
     (classify store "resources/test.csv"))
   t)
 
-(defun test ()
-  (let ((store (nbayes:make-learned-store)))
-    (learn store "resources/train.csv" 0 0.5)
-    (let ((success 0)
-          (count 0))
-      (do-converted-line-data (line-lst "resources/train.csv"
-                                        :offset-ratio 0.5
-                                        :use-ratio 0.5)
-        (let ((result (car (nbayes:sort-category-by-prob store (cddr line-lst))))
-              (expected (cadr line-lst)))
-          (when (equal result expected)
-            (incf success))
-          (incf count)))
-      (format t "~%~D/~D (~A)~%" success count (float (/ success count))))))
+(defun cross-validate ()
+  (let* ((k-cross 5)
+         (use-ratio (/ 1 k-cross))
+         (offset-ratio-lst (iota k-cross
+                                 :start 0
+                                 :step (/ 1 k-cross)))
+         (success 0)
+         (count 0))
+    (dolist (test-offset-ratio offset-ratio-lst)
+      (let ((store (nbayes:make-learned-store)))
+        (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
+          (learn store "resources/train.csv" learn-offset-ratio use-ratio))
+        (do-converted-line-data (line-lst "resources/train.csv"
+                                          :offset-ratio test-offset-ratio
+                                          :use-ratio use-ratio)
+          (let ((result (car (nbayes:sort-category-by-prob store (cddr line-lst))))
+                (expected (cadr line-lst)))
+            (when (equal result expected)
+              (incf success))
+            (incf count)))))
+    (let* ((ave (float (/ success count)))
+           (confidence (* 1.96 (sqrt (* ave (- 1 ave) (/ 1 count))))))
+      (format t "~%~D/~D (~A +- ~A)~%" success count ave confidence))))
