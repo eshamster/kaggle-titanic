@@ -55,10 +55,18 @@
   (if cabin
       (ppcre:scan-to-strings "[A-Z]" cabin)))
 
-(defun add-name (name value)
-  (if (or (null value) (equal value ""))
-      nil
-      (format nil "~A:~A" name value)))
+(defun add-name (name &rest values)
+  (labels ((join-values (rest result needs-hyphen)
+             (when (null rest)
+               (return-from join-values result))
+             (join-values (cdr rest)
+                          (format nil "~A~A~A" result (if needs-hyphen "-" "") (car rest))
+                          t)))
+    (if (every #'(lambda (value)
+                   (or (null value) (equal value "")))
+               values)
+        nil
+        (format nil "~A:~A" name (join-values values "" nil)))))
 
 (defun round-num (target-str interval &key (scale 1))
   (if (= (length target-str) 0)
@@ -88,16 +96,12 @@
                      ("Pclass" (add-name "class" it))
                      ("Name" (extract-miss-or-mrs it))
                      ("Sex" it)
-                     (("Sex" "Age") (add-name "Sex-Age"
-                                              (format nil "~A~A"
-                                                      sex
-                                                      (round-num age 5))))
+                     (("Sex" "Age") (add-name "Sex-Age" sex (round-num age 5)))
                      ("Age" (add-name "Age" (round-num it 5)))
-                     (("SibSp" "Parch") (add-name "Sib-Par"
-                                                  (format nil "~A-~A" sibsp parch)))
+                     (("SibSp" "Parch") (add-name "Sib-Par" sibsp parch))
                      ("Parch" (add-name "Par" it))
                      ("SibSp" (add-name "Sib" it))
-                     ; ("Fare" (add-name "Fare" (round-num it 10)))
+                     ; ("Fare" (add-name "Fare" (round-num it 50)))
                      ("Cabin" (add-name "Cabin" (extract-cabin it)))
                      ("Cabin" (add-name "Cabin-raw" it))
                      ("Embarked" (add-name "Emb" it))))))
@@ -105,7 +109,7 @@
 
 (defun learn (store learn-path &optional (offset-ratio 0) (use-ratio 1))
   (let ((count 0)
-        (sampling-interval 100))
+        (sampling-interval 200))
     (do-converted-line-data (line-lst learn-path
                                       :offset-ratio offset-ratio
                                       :use-ratio use-ratio)
