@@ -102,6 +102,7 @@
                      ("Parch" (add-name "Par" it))
                      ("SibSp" (add-name "Sib" it))
                      ; ("Fare" (add-name "Fare" (round-num it 50)))
+                     ("Ticket" (add-name "Ticket-pre" (regex-replace " [0-9]*$" it "")))
                      ("Cabin" (add-name "Cabin" (extract-cabin it)))
                      ("Cabin" (add-name "Cabin-raw" it))
                      ("Embarked" (add-name "Emb" it))))))
