@@ -1,112 +1,15 @@
 (in-package :cl-user)
 (defpackage kaggle-titanic
-  (:use :cl
-        :cl-ppcre)
+  (:use :cl)
   (:export :main
            :cross-validate)
-  (:import-from :cl-csv
-                :read-csv
-                :write-csv)
-  (:import-from :alexandria
-                :once-only
-                :with-gensyms
-                :compose
-                :iota)
+  (:import-from :kaggle-titanic.data
+                :do-converted-line-data)
   (:import-from :anaphora
-                :aif
-                :it))
+                :it)
+  (:import-from :alexandria 
+                :iota))
 (in-package :kaggle-titanic)
-
-(defun make-my-path (rel-path)
-  (merge-pathnames
-   rel-path
-   (directory-namestring
-    (asdf:system-source-file
-     (asdf:find-system :kaggle-titanic)))))
-
-(defun find-target-value (target head-line data-line)
-  (aif (position target head-line :test #'equal)
-       (nth it data-line)))
-
-(defmacro convert-raw-data-one-line (head-line data-line &body body)
-  (once-only (head-line data-line)
-    `(list ,@(mapcar
-              (lambda (process)
-                (let ((arg-lst (if (listp (car process))
-                                   (car process)
-                                   '("it")))
-                      (find-lst (if (listp (car process))
-                                    (car process)
-                                    (list (car process)))))
-                  `((lambda (,@(mapcar (compose #'intern #'string-upcase) arg-lst))
-                      ,@(cdr process))
-                    ,@(mapcar
-                       (lambda (arg) 
-                         `(find-target-value ,arg ,head-line ,data-line))
-                       find-lst))))
-              body))))
-
-(defun extract-miss-or-mrs (name)
-  (multiple-value-bind (replaced found)
-      (ppcre:regex-replace "^.*(Miss|Mrs).*$" name "\\1")
-    (if found replaced nil)))
-
-(defun extract-cabin (cabin)
-  (if cabin
-      (ppcre:scan-to-strings "[A-Z]" cabin)))
-
-(defun add-name (name &rest values)
-  (labels ((join-values (rest result needs-hyphen)
-             (when (null rest)
-               (return-from join-values result))
-             (join-values (cdr rest)
-                          (format nil "~A~A~A" result (if needs-hyphen "-" "") (car rest))
-                          t)))
-    (if (every #'(lambda (value)
-                   (or (null value) (equal value "")))
-               values)
-        nil
-        (format nil "~A:~A" name (join-values values "" nil)))))
-
-(defun round-num (target-str interval &key (scale 1))
-  (if (= (length target-str) 0)
-      (return-from round-num nil))
-  (* interval (round
-               (/ (* (read-from-string target-str) scale)
-                  interval))))
-
-(defmacro do-converted-line-data ((value data-path &key (offset-ratio 0) (use-ratio 1)) &body body)
-  (with-gensyms (data head-line data-lines line offset max-use count)
-    `(let* ((,data (read-csv (make-my-path ,data-path)))
-            (,head-line (car ,data))
-            (,data-lines (cdr ,data))
-            (,offset (round (* (length ,data-lines) (max 0 ,offset-ratio))))
-            (,max-use (round (* (length ,data-lines) (min 1 (+ ,offset-ratio ,use-ratio)))))
-            (,count -1))
-       (dolist (,line ,data-lines)
-         (incf ,count)
-         (when (and (<= ,offset ,count)
-                    (<= ,count ,max-use))
-           (let ((,value
-                  (remove-if
-                   #'null
-                   (convert-raw-data-one-line ,head-line ,line
-                     ("PassengerId" it)
-                     ("Survived" it)
-                     ("Pclass" (add-name "class" it))
-                     ("Name" (extract-miss-or-mrs it))
-                     ("Sex" it)
-                     (("Sex" "Age") (add-name "Sex-Age" sex (round-num age 5)))
-                     ("Age" (add-name "Age" (round-num it 5)))
-                     (("SibSp" "Parch") (add-name "Sib-Par" sibsp parch))
-                     ("Parch" (add-name "Par" it))
-                     ("SibSp" (add-name "Sib" it))
-                     ; ("Fare" (add-name "Fare" (round-num it 50)))
-                     ("Ticket" (add-name "Ticket-pre" (regex-replace " [0-9]*$" it "")))
-                     ("Cabin" (add-name "Cabin" (extract-cabin it)))
-                     ("Cabin" (add-name "Cabin-raw" it))
-                     ("Embarked" (add-name "Emb" it))))))
-             ,@body))))))
 
 (defun learn (store learn-path &optional (offset-ratio 0) (use-ratio 1))
   (let ((count 0)

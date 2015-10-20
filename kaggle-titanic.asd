@@ -23,7 +23,9 @@
                :cl-naive-bayes)
   :components ((:module "src"
                 :components
-                ((:file "kaggle-titanic"))))
+                ((:file "csv")
+                 (:file "data")
+                 (:file "kaggle-titanic"))))
   :description ""
   :long-description
   #.(with-open-file (stream (merge-pathnames
