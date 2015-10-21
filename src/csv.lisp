@@ -14,27 +14,16 @@
   (aif (position target head-line :test #'equal)
        (nth it data-line)))
 
-(defun reconstruct-list (lst fn-elem)
-  (labels ((rec (result rest)
-             (if rest
-                 (dolist (elem rest)
-                   (setf result
-                         (cons (if (listp elem)
-                                   (rec nil elem)
-                                   (funcall fn-elem elem))
-                               result))))
-             (reverse result)))
-    (rec nil lst)))
+(defun equal-name (l r)
+  (labels ((get-name (x)
+             (if (symbolp x) (symbol-name x) x)))
+    (equal (get-name l) (get-name r))))
 
-(defun rec-intern-by-args (body-lst arg-lst)
-  (reconstruct-list body-lst
-                    (lambda (elem)
-                      (if (symbolp elem)
-                          (if (find (symbol-name elem) (mapcar #'symbol-name arg-lst)
-                                    :test #'equal)
-                              (intern (symbol-name elem))
-                              elem)
-                          elem))))
+(defun re-intern-symbols (body-lst name-lst)
+  (let ((replace-lst (mapcar (lambda (name) (cons name name))
+                             name-lst)))
+    (sublis replace-lst body-lst
+            :test #'equal-name)))
 
 (defmacro convert-raw-data-one-line (head-line data-line &body body)
   (once-only (head-line data-line)
@@ -44,12 +33,12 @@
                                    (mapcar (lambda (str)
                                              (intern (string-upcase str)))
                                            (car process))
-                                   '(:it)))
+                                   '(it)))
                       (find-lst (if (listp (car process))
                                     (car process)
                                     (list (car process)))))
                   `((lambda (,@arg-lst)
-                      ,@(rec-intern-by-args (cdr process) arg-lst))
+                      ,@(re-intern-symbols (cdr process) arg-lst))
                     ,@(mapcar
                        (lambda (arg) 
                          `(find-target-value ,arg ,head-line ,data-line))
