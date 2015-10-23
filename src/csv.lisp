@@ -38,7 +38,9 @@
                                     (car process)
                                     (list (car process)))))
                   `((lambda (,@arg-lst)
-                      ,@(re-intern-symbols (cdr process) arg-lst))
+                      ,@(if (cdr process)
+                            (re-intern-symbols (cdr process) arg-lst)
+                            arg-lst))
                     ,@(mapcar
                        (lambda (arg) 
                          `(find-target-value ,arg ,head-line ,data-line))

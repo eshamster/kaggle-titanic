@@ -49,11 +49,11 @@
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
-    ("PassengerId" it)
-    ("Survived" it)
+    ("PassengerId")
+    ("Survived")
     ("Pclass" (add-name "class" it))
     ("Name" (extract-miss-or-mrs it))
-    ("Sex" it)
+    ("Sex")
     (("Sex" "Age") (add-name "Sex-Age" sex (round-num age 5)))
     ("Age" (add-name "Age" (round-num it 5)))
     (("SibSp" "Parch") (add-name "Sib-Par" sibsp parch))
