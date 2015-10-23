@@ -66,7 +66,7 @@
     ("Embarked" (add-name "Emb" it))))
 
 
-(defmacro do-converted-line-data ((value data-path &key (offset-ratio 0) (use-ratio 1)) &body body)
+(defmacro do-converted-line-data ((value data-path &key (offset-ratio 0) (use-ratio 1) (process-line #'process-line)) &body body)
   (with-gensyms (data head-line data-lines line offset max-use count)
     `(let* ((,data (read-csv (make-my-path ,data-path)))
             (,head-line (car ,data))
@@ -81,6 +81,6 @@
            (let ((,value
                   (remove-if
                    #'null
-                   (process-line ,head-line ,line))))
+                   (funcall process-line ,head-line ,line))))
              ,@body))))))
 
