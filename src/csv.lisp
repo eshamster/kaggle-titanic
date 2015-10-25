@@ -7,6 +7,7 @@
                 :it)
   (:import-from :alexandria
                 :once-only
+                :with-gensyms
                 :compose))
 (in-package :kaggle-titanic.csv)
 
@@ -25,24 +26,51 @@
     (sublis replace-lst body-lst
             :test #'equal-name)))
 
+(defun add-to-new-header (names new-header-lst)
+  (labels ((make-base-name (result name-lst needs-hyphen)
+             (if (null name-lst)
+                 result
+                 (make-base-name (format nil "~A~A~A"
+                                         result
+                                         (if needs-hyphen "-" "")
+                                         (car name-lst))
+                                 (cdr name-lst)
+                                 t)))
+           (add-without-duplicate (base-name count lst)
+             (let ((name (format nil "~A~A"
+                                 base-name
+                                 (if (> count 1) count ""))))
+               (if (find name lst :test #'equal)
+                   (add-without-duplicate base-name (1+ count) lst)
+                   (setf lst (cons name lst))))))
+    (add-without-duplicate (if (listp names) (make-base-name "" names nil) names)
+                           1
+                           new-header-lst)))
+
 (defmacro convert-raw-data-one-line (head-line data-line &body body)
   (once-only (head-line data-line)
-    `(list ,@(mapcar
-              (lambda (process)
-                (let ((arg-lst (if (listp (car process))
-                                   (mapcar (lambda (str)
-                                             (intern (string-upcase str)))
-                                           (car process))
-                                   '(it)))
-                      (find-lst (if (listp (car process))
-                                    (car process)
-                                    (list (car process)))))
-                  `((lambda (,@arg-lst)
-                      ,@(if (cdr process)
-                            (re-intern-symbols (cdr process) arg-lst)
-                            arg-lst))
-                    ,@(mapcar
-                       (lambda (arg) 
-                         `(find-target-value ,arg ,head-line ,data-line))
-                       find-lst))))
-              body))))
+    (with-gensyms (new-header)
+      `(let ((,new-header))
+         (values (list ,@(mapcar
+                          (lambda (process)
+                            (let* ((names (car process))
+                                   (arg-lst (if (listp names)
+                                                (mapcar (lambda (str)
+                                                          (intern (string-upcase str)))
+                                                        names)
+                                                '(it)))
+                                   (find-lst (if (listp names)
+                                                 (car process)
+                                                 (list names))))
+                              `((lambda (,@arg-lst)
+                                  (setf ,new-header
+                                        (add-to-new-header ',names ,new-header))
+                                  ,@(if (cdr process)
+                                        (re-intern-symbols (cdr process) arg-lst)
+                                        arg-lst))
+                                ,@(mapcar
+                                   (lambda (arg) 
+                                     `(find-target-value ,arg ,head-line ,data-line))
+                                   find-lst))))
+                          body))
+                 (reverse ,new-header))))))

@@ -6,7 +6,7 @@
         :prove))
 (in-package :kaggle-titanic-test.csv)
 
-(plan 4)
+(plan 5)
 
 (subtest
     "Test $:find-target-value"
@@ -31,8 +31,17 @@
       :test #'equal))
 
 (subtest
+    "Test $:add-to-new-header"
+  (is ($:add-to-new-header "test" nil) '("test") :test #'equal)
+  (is ($:add-to-new-header "test" '("ab" "test")) '("test2" "ab" "test") :test #'equal)
+  (is ($:add-to-new-header "test" '("test2" "ab" "test"))
+      '("test3" "test2" "ab" "test") :test #'equal)
+  (is ($:add-to-new-header '("te" "st") '("cd" "ab")) '("te-st" "cd" "ab")))
+
+(subtest
     "Test convert-raw-data-one-line"
-  (is (convert-raw-data-one-line
+  (multiple-value-bind (converted new-header)
+      (convert-raw-data-one-line
           '("ab" "cd" "ef" "gh")
           '(1 2 3 4)
         ("ab" it)
@@ -40,7 +49,7 @@
         (("ab" "ef") (+ ab :ef))
         ("gh")
         ("not-found" it))
-      '(1 2 4 4 nil)
-      :test #'equal))
+    (is converted '(1 2 4 4 nil) :test #'equal)
+    (is new-header '("ab" "ab2" "ab-ef" "gh" "not-found") :test #'equal)))
 
 (finalize)
