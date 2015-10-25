@@ -22,9 +22,11 @@
                :anaphora
                :cl-naive-bayes)
   :components ((:module "src"
+                :serial t
                 :components
                 ((:file "csv")
                  (:file "data")
+                 (:file "learner")
                  (:file "kaggle-titanic"))))
   :description ""
   :long-description

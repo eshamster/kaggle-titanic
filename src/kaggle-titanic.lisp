@@ -4,23 +4,19 @@
   (:export :main
            :cross-validate)
   (:import-from :kaggle-titanic.data
-                :do-converted-line-data)
+                :make-my-path)
+  (:import-from :kaggle-titanic.learner
+                :learn
+                :classify-result-id
+                :classify-result-result
+                :classify-result-certainty
+                :classify-result-expected
+                :do-classified-result)
   (:import-from :anaphora
                 :it)
   (:import-from :alexandria 
                 :iota))
 (in-package :kaggle-titanic)
-
-(defun learn (store learn-path &optional (offset-ratio 0) (use-ratio 1))
-  (let ((count 0)
-        (sampling-interval 200))
-    (do-converted-line-data (line-lst learn-path
-                                      :offset-ratio offset-ratio
-                                      :use-ratio use-ratio)
-      (when (= (mod count sampling-interval) 0)
-        (format t "~%Sample: ~D~%" line-lst))
-      (nbayes:learn-a-document store (cddr line-lst) (cadr line-lst))
-      (incf count))))
 
 (defun classify (store test-path)
   (with-open-file (out (make-my-path "resources/result.csv")
@@ -30,11 +26,10 @@
     (format out "PassengerId,Survived~%")
     (let ((count 0)
           (sum-first-post-prob 0))
-      (do-converted-line-data (line-lst test-path)
-        (let ((sorted (nbayes:sort-category-with-post-prob store (cdr line-lst))))
-          (format out "~D,~D~%" (car line-lst) (caar sorted))
-          (incf count)
-          (incf sum-first-post-prob (cdar sorted))))
+      (do-classified-result store (result test-path)
+        (format out "~D,~D~%" (classify-result-id result) (classify-result-result result))
+        (incf count)
+        (incf sum-first-post-prob (classify-result-certainty result)))
       (format t "~%Average: ~A~%" (/ sum-first-post-prob count)))))
 
 (defun main ()
@@ -54,13 +49,15 @@
     (dolist (test-offset-ratio offset-ratio-lst)
       (let ((store (nbayes:make-learned-store)))
         (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
-          (learn store "resources/train.csv" learn-offset-ratio use-ratio))
-        (do-converted-line-data (line-lst "resources/train.csv"
-                                          :offset-ratio test-offset-ratio
-                                          :use-ratio use-ratio)
-          (let ((result (car (nbayes:sort-category-by-prob store (cddr line-lst))))
-                (expected (cadr line-lst)))
-            (when (equal result expected)
+          (learn store "resources/train.csv"
+                 :offset-ratio learn-offset-ratio
+                 :use-ratio use-ratio))
+        (do-classified-result store (class-result "resources/train.csv"
+                                                  :offset-ratio test-offset-ratio
+                                                  :use-ratio use-ratio)
+          (let ((result (classify-result-result class-result))
+                (expected (classify-result-expected class-result)))
+            (when (eq result expected)
               (incf success))
             (incf count)))))
     (let* ((ave (float (/ success count)))
