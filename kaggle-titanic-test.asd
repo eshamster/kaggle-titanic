@@ -12,10 +12,13 @@
   :author "eshamster"
   :license ""
   :depends-on (:kaggle-titanic
+               :cl-ppcre
                :prove)
   :components ((:module "t"
                 :components
-                ((:test-file "kaggle-titanic"))))
+                ((:file "utils")
+                 (:test-file "csv")
+                 (:test-file "kaggle-titanic"))))
   :description "Test system for kaggle-titanic"
 
   :defsystem-depends-on (:prove-asdf)
