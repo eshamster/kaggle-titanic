@@ -68,7 +68,7 @@
                     (<= ,count ,max-use))
            (let ((,value
                    ,(if process-one-line
-                        `(,process-one-line ,head-line ,line)
+                        `(funcall ,process-one-line ,head-line ,line)
                         line)))
              ,@body))))))
 

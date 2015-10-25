@@ -23,6 +23,14 @@
                 :with-gensyms))
 (in-package :kaggle-titanic.learner)
 
+(defstruct classifier
+  (store (nbayes:make-learned-store))
+  (weight 0)
+  process-line)
+
+(defun make-classifier-list ()
+  (list (make-classifier :process-line 'process-line :weight 0)))
+
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
     ("PassengerId")
@@ -44,17 +52,18 @@
 (defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
         (sampling-interval 200))
-    (when (null store) (setf store (nbayes:make-learned-store)))
-    (do-converted-line-data (line-lst learn-path
-                                      :offset-ratio offset-ratio
-                                      :use-ratio use-ratio
-                                      :process-one-line process-line)
-      (when (= (mod count sampling-interval) 0)
-        (format t "~%Sample: ~D~%" line-lst))
-      (nbayes:learn-a-document store
-                               (remove-if #'null (cddr line-lst))
-                               (cadr line-lst))
-      (incf count)))
+    (when (null store) (setf store (make-classifier-list)))
+    (dolist (classifier store)
+      (do-converted-line-data (line-lst learn-path
+                                        :offset-ratio offset-ratio
+                                        :use-ratio use-ratio
+                                        :process-one-line (classifier-process-line classifier))
+        (when (= (mod count sampling-interval) 0)
+          (format t "~%Sample: ~D~%" line-lst))
+        (nbayes:learn-a-document (classifier-store classifier)
+                                 (remove-if #'null (cddr line-lst))
+                                 (cadr line-lst))
+        (incf count))))
   store)
 
 (defstruct classify-result
@@ -64,9 +73,9 @@
   expected ; 0, 1 or NIL
   )
 
-(defun classify (store line)
+(defun classify-by-a-classifier (classifier line)
   (let ((result (make-classify-result))
-        (raw-result (nbayes:sort-category-with-post-prob store
+        (raw-result (nbayes:sort-category-with-post-prob (classifier-store classifier)
                                                          (remove-if #'null (cddr line)))))
     (setf (classify-result-id result) (car line))
     (setf (classify-result-expected result) (aif (cadr line)
@@ -75,14 +84,18 @@
     (setf (classify-result-certainty result) (cdar raw-result))
     result))
 
+(defun classify (store line)
+  (classify-by-a-classifier (car store) line))
+
 (defmacro do-classified-result (store (result test-path &key
                                               (offset-ratio 0)
                                               (use-ratio 1))
                                 &body body)
-  (with-gensyms (line)
-    `(do-converted-line-data (,line ,test-path
-                                    :offset-ratio ,offset-ratio
-                                    :use-ratio ,use-ratio
-                                    :process-one-line process-line)
-       (let ((,result (classify ,store ,line)))
-         ,@body))))
+  (with-gensyms (line classifier)
+    `(let ((,classifier (car ,store)))
+       (do-converted-line-data (,line ,test-path
+                                      :offset-ratio ,offset-ratio
+                                      :use-ratio ,use-ratio
+                                      :process-one-line (classifier-process-line ,classifier))
+         (let ((,result (classify ,store ,line)))
+           ,@body)))))
