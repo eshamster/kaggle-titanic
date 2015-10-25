@@ -18,7 +18,7 @@
                 :iota))
 (in-package :kaggle-titanic)
 
-(defun classify (store test-path)
+(defun classify-test-data (store test-path)
   (with-open-file (out (make-my-path "resources/result.csv")
                        :direction :output
                        :if-does-not-exist :create
@@ -33,9 +33,8 @@
       (format t "~%Average: ~A~%" (/ sum-first-post-prob count)))))
 
 (defun main ()
-  (let ((store (nbayes:make-learned-store)))
-    (learn store "resources/train.csv")
-    (classify store "resources/test.csv"))
+  (let ((store (learn "resources/train.csv")))
+    (classify-test-data store "resources/test.csv"))
   t)
 
 (defun cross-validate ()
@@ -47,11 +46,13 @@
          (success 0)
          (count 0))
     (dolist (test-offset-ratio offset-ratio-lst)
-      (let ((store (nbayes:make-learned-store)))
+      (let ((store nil))
         (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
-          (learn store "resources/train.csv"
-                 :offset-ratio learn-offset-ratio
-                 :use-ratio use-ratio))
+          (setf store
+                (learn "resources/train.csv"
+                       :offset-ratio learn-offset-ratio
+                       :use-ratio use-ratio
+                       :store store)))
         (do-classified-result store (class-result "resources/train.csv"
                                                   :offset-ratio test-offset-ratio
                                                   :use-ratio use-ratio)

@@ -41,9 +41,10 @@
     ("Cabin" (add-name "Cabin-raw" it))
     ("Embarked" (add-name "Emb" it))))
 
-(defun learn (store learn-path &key (offset-ratio 0) (use-ratio 1))
+(defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
         (sampling-interval 200))
+    (when (null store) (setf store (nbayes:make-learned-store)))
     (do-converted-line-data (line-lst learn-path
                                       :offset-ratio offset-ratio
                                       :use-ratio use-ratio
@@ -53,7 +54,8 @@
       (nbayes:learn-a-document store
                                (remove-if #'null (cddr line-lst))
                                (cadr line-lst))
-      (incf count))))
+      (incf count)))
+  store)
 
 (defstruct classify-result
   id
