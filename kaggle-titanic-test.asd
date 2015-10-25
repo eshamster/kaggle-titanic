@@ -18,6 +18,7 @@
                 :components
                 ((:file "utils")
                  (:test-file "csv")
+                 (:test-file "data")
                  (:test-file "kaggle-titanic"))))
   :description "Test system for kaggle-titanic"
 

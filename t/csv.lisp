@@ -6,7 +6,7 @@
         :prove))
 (in-package :kaggle-titanic-test.csv)
 
-(plan nil)
+(plan 4)
 
 (subtest
     "Test $:find-target-value"

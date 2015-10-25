@@ -6,4 +6,5 @@
 *.x86f
 *~
 resources/*.csv
+t/test.csv
 .#*

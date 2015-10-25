@@ -65,10 +65,9 @@
        (dolist (,line ,data-lines)
          (incf ,count)
          (when (and (<= ,offset ,count)
-                    (<= ,count ,max-use))
+                    (< ,count ,max-use))
            (let ((,value
                    ,(if process-one-line
                         `(funcall ,process-one-line ,head-line ,line)
                         line)))
              ,@body))))))
-
