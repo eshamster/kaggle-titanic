@@ -28,8 +28,8 @@
   (weight 0)
   process-line)
 
-(defun make-classifier-list ()
-  (list (make-classifier :process-line 'process-line :weight 0)))
+(defstruct ensembler
+  (lst (list (make-classifier :process-line 'process-line :weight 0))))
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
@@ -52,8 +52,8 @@
 (defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
         (sampling-interval 200))
-    (when (null store) (setf store (make-classifier-list)))
-    (dolist (classifier store)
+    (when (null store) (setf store (make-ensembler)))
+    (dolist (classifier (ensembler-lst store))
       (do-converted-line-data (line-lst learn-path
                                         :offset-ratio offset-ratio
                                         :use-ratio use-ratio
@@ -73,9 +73,11 @@
   expected ; 0, 1 or NIL
   )
 
-(defun classify-by-a-classifier (classifier line)
+(defgeneric classify (store line))
+
+(defmethod classify ((store classifier) line)
   (let ((result (make-classify-result))
-        (raw-result (nbayes:sort-category-with-post-prob (classifier-store classifier)
+        (raw-result (nbayes:sort-category-with-post-prob (classifier-store store)
                                                          (remove-if #'null (cddr line)))))
     (setf (classify-result-id result) (car line))
     (setf (classify-result-expected result) (aif (cadr line)
@@ -84,15 +86,15 @@
     (setf (classify-result-certainty result) (cdar raw-result))
     result))
 
-(defun classify (store line)
-  (classify-by-a-classifier (car store) line))
+(defmethod classify ((store ensembler) line)
+  (classify (car (ensembler-lst store)) line))
 
 (defmacro do-classified-result (store (result test-path &key
                                               (offset-ratio 0)
                                               (use-ratio 1))
                                 &body body)
   (with-gensyms (line classifier)
-    `(let ((,classifier (car ,store)))
+    `(let ((,classifier (car (ensembler-lst ,store))))
        (do-converted-line-data (,line ,test-path
                                       :offset-ratio ,offset-ratio
                                       :use-ratio ,use-ratio
