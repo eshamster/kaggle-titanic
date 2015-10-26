@@ -27,15 +27,12 @@
             :test #'equal-name)))
 
 (defun add-to-new-header (names new-header-lst)
-  (labels ((make-base-name (result name-lst needs-hyphen)
+  (labels ((make-base-name (result name-lst prefix)
              (if (null name-lst)
                  result
-                 (make-base-name (format nil "~A~A~A"
-                                         result
-                                         (if needs-hyphen "-" "")
-                                         (car name-lst))
+                 (make-base-name (format nil "~A~A~A" result prefix (car name-lst))
                                  (cdr name-lst)
-                                 t)))
+                                 "-")))
            (add-without-duplicate (base-name count lst)
              (let ((name (format nil "~A~A"
                                  base-name
@@ -43,7 +40,7 @@
                (if (find name lst :test #'equal)
                    (add-without-duplicate base-name (1+ count) lst)
                    (setf lst (cons name lst))))))
-    (add-without-duplicate (if (listp names) (make-base-name "" names nil) names)
+    (add-without-duplicate (if (listp names) (make-base-name "" names "") names)
                            1
                            new-header-lst)))
 

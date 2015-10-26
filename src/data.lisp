@@ -31,17 +31,17 @@
       (ppcre:scan-to-strings "[A-Z]" cabin)))
 
 (defun add-name (name &rest values)
-  (labels ((join-values (rest result needs-hyphen)
+  (labels ((join-values (rest result prefix)
              (when (null rest)
                (return-from join-values result))
              (join-values (cdr rest)
-                          (format nil "~A~A~A" result (if needs-hyphen "-" "") (car rest))
-                          t)))
+                          (format nil "~A~A~A" result prefix (car rest))
+                          "-")))
     (if (every #'(lambda (value)
                    (or (null value) (equal value "")))
                values)
         nil
-        (format nil "~A:~A" name (join-values values "" nil)))))
+        (format nil "~A:~A" name (join-values values "" "")))))
 
 (defun round-num (target-str interval &key (scale 1))
   (if (= (length target-str) 0)
