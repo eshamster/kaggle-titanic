@@ -29,7 +29,20 @@
   process-line)
 
 (defstruct ensembler
-  (lst (list (make-classifier :process-line 'process-line :weight 0))))
+  (lst (list (make-classifier :process-line 'process-line-sample1 :weight 0.8)
+             (make-classifier :process-line 'process-line-sample2 :weight 0.2))))
+
+(defmacro def-simple-converter (&rest target-lst)
+  (with-gensyms (header line)
+    `(lambda (,header ,line)
+       (convert-raw-data-one-line ,header ,line
+         ,@(mapcar #'list target-lst)))))
+
+(defun process-line-sample1 (header line)
+  (funcall (def-simple-converter "Sex" "Sex-Age" "Age") header line))
+
+(defun process-line-sample2 (header line)
+  (funcall (def-simple-converter "Pclass" "Fare") header line))
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
@@ -43,27 +56,32 @@
     (("SibSp" "Parch") (add-name "Sib-Par" sibsp parch))
     ("Parch" (add-name "Par" it))
     ("SibSp" (add-name "Sib" it))
-                                        ; ("Fare" (add-name "Fare" (round-num it 50)))
+    ("Fare" (add-name "Fare" (round-num it 50)))
     ("Ticket" (add-name "Ticket-pre" (ppcre:regex-replace " [0-9]*$" it "")))
     ("Cabin" (add-name "Cabin" (extract-cabin it)))
     ("Cabin" (add-name "Cabin-raw" it))
     ("Embarked" (add-name "Emb" it))))
 
+(defun learn-a-classifier (classifier category line header)
+  (let ((converted-line (funcall (classifier-process-line classifier) header line)))
+    (nbayes:learn-a-document (classifier-store classifier)
+                             (remove-if #'null converted-line)
+                             category)))
+
 (defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
         (sampling-interval 200))
     (when (null store) (setf store (make-ensembler)))
-    (dolist (classifier (ensembler-lst store))
-      (do-converted-line-data (line-lst learn-path
-                                        :offset-ratio offset-ratio
-                                        :use-ratio use-ratio
-                                        :process-one-line (classifier-process-line classifier))
-        (when (= (mod count sampling-interval) 0)
-          (format t "~%Sample: ~D~%" line-lst))
-        (nbayes:learn-a-document (classifier-store classifier)
-                                 (remove-if #'null (cddr line-lst))
-                                 (cadr line-lst))
-        (incf count))))
+    (do-converted-line-data ((line-lst header) learn-path
+                             :offset-ratio offset-ratio
+                             :use-ratio use-ratio
+                             :process-one-line #'process-line)
+      (when (= (mod count sampling-interval) 0)
+        (format t "~%Sample: ~D~%" line-lst))
+      (dolist (classifier (ensembler-lst store))
+        (learn-a-classifier classifier (cadr line-lst)
+                            (cddr line-lst) (cddr header)))
+      (incf count)))
   store)
 
 (defstruct classify-result
@@ -73,12 +91,15 @@
   expected ; 0, 1 or NIL
   )
 
-(defgeneric classify (store line))
+(defgeneric classify (store line header))
 
-(defmethod classify ((store classifier) line)
+(defmethod classify ((store classifier) line header)
   (let ((result (make-classify-result))
-        (raw-result (nbayes:sort-category-with-post-prob (classifier-store store)
-                                                         (remove-if #'null (cddr line)))))
+        (raw-result (nbayes:sort-category-with-post-prob
+                     (classifier-store store) 
+                     (remove-if #'null (funcall (classifier-process-line store)
+                                                (cddr header)
+                                                (cddr line))))))
     (setf (classify-result-id result) (car line))
     (setf (classify-result-expected result) (aif (cadr line)
                                                  (parse-integer it)))
@@ -86,18 +107,18 @@
     (setf (classify-result-certainty result) (cdar raw-result))
     result))
 
-(defmethod classify ((store ensembler) line)
-  (classify (car (ensembler-lst store)) line))
+(defmethod classify ((store ensembler) line header)
+  (classify (car (ensembler-lst store)) line header))
 
 (defmacro do-classified-result (store (result test-path &key
                                               (offset-ratio 0)
                                               (use-ratio 1))
                                 &body body)
-  (with-gensyms (line classifier)
+  (with-gensyms (line header classifier)
     `(let ((,classifier (car (ensembler-lst ,store))))
-       (do-converted-line-data (,line ,test-path
-                                      :offset-ratio ,offset-ratio
-                                      :use-ratio ,use-ratio
-                                      :process-one-line (classifier-process-line ,classifier))
-         (let ((,result (classify ,store ,line)))
+       (do-converted-line-data ((,line ,header) ,test-path
+                                :offset-ratio ,offset-ratio
+                                :use-ratio ,use-ratio
+                                :process-one-line #'process-line)
+         (let ((,result (classify ,store ,line ,header)))
            ,@body)))))
