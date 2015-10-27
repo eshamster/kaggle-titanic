@@ -39,10 +39,10 @@
          ,@(mapcar #'list target-lst)))))
 
 (defun process-line-sample1 (header line)
-  (funcall (def-simple-converter "Sex" "Sex-Age" "Age") header line))
+  (funcall (def-simple-converter "Pclass" "Sex" "Sex-Age" "Age") header line))
 
 (defun process-line-sample2 (header line)
-  (funcall (def-simple-converter "Pclass" "Fare") header line))
+  (funcall (def-simple-converter "Pclass" "Fare" "Cabin") header line))
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
@@ -108,7 +108,22 @@
     result))
 
 (defmethod classify ((store ensembler) line header)
-  (classify (car (ensembler-lst store)) line header))
+  (let ((result (make-classify-result :certainty 0))
+        (sum-weight 0))
+    (with-slots (id result certainty expected) result
+      (dolist (classifier (ensembler-lst store))
+        (let ((mid-result (classify classifier line header)))
+          (setf id (classify-result-id mid-result))
+          (setf expected (classify-result-expected mid-result))
+          (incf certainty
+                (* (classifier-weight classifier)
+                   (if (eq (classify-result-result mid-result) 1)
+                       (classify-result-certainty mid-result)
+                       (- 1 (classify-result-certainty mid-result)))))
+          (incf sum-weight (classifier-weight classifier))))
+      (setf certainty (/ certainty sum-weight))
+      (setf result (if (> certainty 0.5) 1 0)))
+    result))
 
 (defmacro do-classified-result (store (result test-path &key
                                               (offset-ratio 0)
