@@ -75,6 +75,12 @@ e1,e2,e3"))
         '(("b1" "n:b2-b3" nil)
           ("c1" "n:c2-c3" nil)
           ("d1" "n:d2-d3" nil))
-        :test #'equal)))
+        :test #'equal)
+    (let ((header))
+      (do-converted-line-data ((line new-head-line) *test-path*
+                               :process-one-line #'convert)
+        (identity line)
+        (setf header new-head-line))
+      (is header '("ab" "cd-ef" "not-included") :test #'equal))))
 
 (finalize)

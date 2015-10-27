@@ -66,8 +66,8 @@
          (incf ,count)
          (when (and (<= ,offset ,count)
                     (<= ,count ,max-use))
-           (let ((,value
-                   ,(if process-one-line
-                        `(funcall ,process-one-line ,head-line ,line)
-                        line)))
+           (multiple-value-bind (,@(if (listp value) value (list value)))
+               ,(if process-one-line
+                    `(funcall ,process-one-line ,head-line ,line)
+                    line)
              ,@body))))))
