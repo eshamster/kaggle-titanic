@@ -2,7 +2,7 @@
 (defpackage kaggle-titanic
   (:use :cl)
   (:export :main
-           :cross-validate)
+           :validate)
   (:import-from :kaggle-titanic.data
                 :make-my-path)
   (:import-from :kaggle-titanic.learner
@@ -11,7 +11,8 @@
                 :classify-result-result
                 :classify-result-certainty
                 :classify-result-expected
-                :do-classified-result)
+                :do-classified-result
+                :cross-validate)
   (:import-from :anaphora
                 :it)
   (:import-from :alexandria 
@@ -37,30 +38,7 @@
     (classify-test-data store "resources/test.csv"))
   t)
 
-(defun cross-validate ()
-  (let* ((k-cross 5)
-         (use-ratio (/ 1 k-cross))
-         (offset-ratio-lst (iota k-cross
-                                 :start 0
-                                 :step (/ 1 k-cross)))
-         (success 0)
-         (count 0))
-    (dolist (test-offset-ratio offset-ratio-lst)
-      (let ((store nil))
-        (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
-          (setf store
-                (learn "resources/train.csv"
-                       :offset-ratio learn-offset-ratio
-                       :use-ratio use-ratio
-                       :store store)))
-        (do-classified-result store (class-result "resources/train.csv"
-                                                  :offset-ratio test-offset-ratio
-                                                  :use-ratio use-ratio)
-          (let ((result (classify-result-result class-result))
-                (expected (classify-result-expected class-result)))
-            (when (eq result expected)
-              (incf success))
-            (incf count)))))
-    (let* ((ave (float (/ success count)))
-           (confidence (* 1.96 (sqrt (* ave (- 1 ave) (/ 1 count))))))
-      (format t "~%~D/~D (~A +- ~A)~%" success count ave confidence))))
+(defun validate ()
+  (multiple-value-bind (ave confidence)
+      (cross-validate "resources/train.csv")
+    (format t "~A (+-~A)~%" ave confidence)))

@@ -7,7 +7,8 @@
            :classify-result-result
            :classify-result-certainty
            :classify-result-expected
-           :do-classified-result)
+           :do-classified-result
+           :cross-validate)
   (:import-from :kaggle-titanic.csv
                 :convert-raw-data-one-line)
   (:import-from :kaggle-titanic.data
@@ -135,11 +136,36 @@
                                               (offset-ratio 0)
                                               (use-ratio 1))
                                 &body body)
-  (with-gensyms (line header classifier)
-    `(let ((,classifier (car (ensembler-lst ,store))))
-       (do-converted-line-data ((,line ,header) ,test-path
-                                :offset-ratio ,offset-ratio
-                                :use-ratio ,use-ratio
-                                :process-one-line #'process-line)
-         (let ((,result (classify ,store ,line ,header)))
-           ,@body)))))
+  (with-gensyms (line header)
+    `(do-converted-line-data ((,line ,header) ,test-path
+                              :offset-ratio ,offset-ratio
+                              :use-ratio ,use-ratio
+                              :process-one-line #'process-line)
+       (let ((,result (classify ,store ,line ,header)))
+         ,@body))))
+
+(defun cross-validate (test-file &key (max-ratio 1) (k-cross 5))
+  (let* ((use-ratio (* (/ 1 k-cross) max-ratio))
+         (offset-ratio-lst (iota k-cross
+                                 :start 0
+                                 :step use-ratio))
+         (success 0)
+         (count 0))
+    (dolist (test-offset-ratio offset-ratio-lst)
+      (let ((store nil))
+        (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
+          (setf store
+                (learn test-file
+                       :offset-ratio learn-offset-ratio
+                       :use-ratio use-ratio
+                       :store store)))
+        (do-classified-result store (class-result test-file
+                                                  :offset-ratio test-offset-ratio
+                                                  :use-ratio use-ratio)
+          (with-slots (result expected) class-result
+            (when (eq result expected)
+              (incf success))
+            (incf count)))))
+    (let* ((ave (float (/ success count)))
+           (confidence (* 1.96 (sqrt (* ave (- 1 ave) (/ 1 count))))))
+      (values ave confidence))))
