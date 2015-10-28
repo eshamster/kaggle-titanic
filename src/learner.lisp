@@ -20,6 +20,7 @@
                 :aif
                 :it)
   (:import-from :alexandria
+                :iota
                 :with-gensyms))
 (in-package :kaggle-titanic.learner)
 
@@ -62,11 +63,17 @@
     ("Cabin" (add-name "Cabin-raw" it))
     ("Embarked" (add-name "Emb" it))))
 
-(defun learn-a-classifier (classifier category line header)
-  (let ((converted-line (funcall (classifier-process-line classifier) header line)))
-    (nbayes:learn-a-document (classifier-store classifier)
+(defgeneric learn-a-classifier (store category line header))
+
+(defmethod learn-a-classifier ((store classifier) category line header)
+  (let ((converted-line (funcall (classifier-process-line store) header line)))
+    (nbayes:learn-a-document (classifier-store store)
                              (remove-if #'null converted-line)
                              category)))
+
+(defmethod learn-a-classifier ((store ensembler) category line header)
+  (dolist (classifier (ensembler-lst store))
+    (learn-a-classifier classifier category line header)))
 
 (defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
@@ -78,9 +85,8 @@
                              :process-one-line #'process-line)
       (when (= (mod count sampling-interval) 0)
         (format t "~%Sample: ~D~%" line-lst))
-      (dolist (classifier (ensembler-lst store))
-        (learn-a-classifier classifier (cadr line-lst)
-                            (cddr line-lst) (cddr header)))
+      (learn-a-classifier store (cadr line-lst)
+                          (cddr line-lst) (cddr header))
       (incf count)))
   store)
 
