@@ -30,21 +30,52 @@
   (weight 0)
   process-line)
 
-(defstruct ensembler
-  (lst (list (make-classifier :process-line 'process-line-sample1 :weight 0.8)
-             (make-classifier :process-line 'process-line-sample2 :weight 0.2))))
-
 (defmacro def-simple-converter (&rest target-lst)
   (with-gensyms (header line)
     `(lambda (,header ,line)
        (convert-raw-data-one-line ,header ,line
          ,@(mapcar #'list target-lst)))))
 
-(defun process-line-sample1 (header line)
-  (funcall (def-simple-converter "Pclass" "Sex" "Sex-Age" "Age") header line))
+(defmacro def-simple-classifiers (&rest target-lst-lst)
+  `(list ,@(mapcar (lambda (target-lst)
+                     `(make-classifier
+                       :process-line (def-simple-converter ,@target-lst)))
+                   target-lst-lst)))
 
-(defun process-line-sample2 (header line)
-  (funcall (def-simple-converter "Pclass" "Fare" "Cabin") header line))
+(defstruct ensembler
+  (lst (def-simple-classifiers
+           ("Pclass" "Sex" "Sex-Age" "Age")
+           ("Fare" "Cabin"))))
+
+(defparameter *max-ratio* 1)
+
+(let ((cache))
+  (defun init-ensembler ()
+    (labels ((make-from-cache ()
+               (when cache
+                 (let ((result (make-ensembler)))
+                   (dolist (classifier (ensembler-lst cache))
+                     (with-slots (weight process-line) classifier
+                       (push (make-classifier :weight weight
+                                              :process-line process-line)
+                             (ensembler-lst result))))
+                   result)))
+             (make-new ()
+               (setf cache
+                     (let ((result (make-ensembler)))
+                       (dolist (classifier (ensembler-lst result))
+                         (format t "weight: ~A~%"
+                                 (setf (classifier-weight classifier)
+                                        ; TODO: take the path out
+                                       (- (cross-validate #p"resources/train.csv"
+                                                          :max-ratio *max-ratio*
+                                                          :store classifier)
+                                          0.5))))
+                       result))
+               (make-from-cache)))
+      (aif (make-from-cache)
+           it
+           (make-new)))))
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
@@ -79,13 +110,14 @@
 (defun learn (learn-path &key (offset-ratio 0) (use-ratio 1) (store nil))
   (let ((count 0)
         (sampling-interval 200))
-    (when (null store) (setf store (make-ensembler)))
+    (when (null store) (setf store (init-ensembler)))
     (do-converted-line-data ((line-lst header) learn-path
                              :offset-ratio offset-ratio
                              :use-ratio use-ratio
                              :process-one-line #'process-line)
       (when (= (mod count sampling-interval) 0)
-        (format t "~%Sample: ~D~%" line-lst))
+        ;(format t "~%Sample: ~D~%" line-lst)
+        )
       (learn-a-classifier store (cadr line-lst)
                           (cddr line-lst) (cddr header))
       (incf count)))
@@ -144,7 +176,7 @@
        (let ((,result (classify ,store ,line ,header)))
          ,@body))))
 
-(defun cross-validate (test-file &key (max-ratio 1) (k-cross 5))
+(defun cross-validate (test-file &key (max-ratio 1) (k-cross 5) (store nil))
   (let* ((use-ratio (* (/ 1 k-cross) max-ratio))
          (offset-ratio-lst (iota k-cross
                                  :start 0
@@ -152,20 +184,19 @@
          (success 0)
          (count 0))
     (dolist (test-offset-ratio offset-ratio-lst)
-      (let ((store nil))
-        (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
-          (setf store
-                (learn test-file
-                       :offset-ratio learn-offset-ratio
-                       :use-ratio use-ratio
-                       :store store)))
-        (do-classified-result store (class-result test-file
-                                                  :offset-ratio test-offset-ratio
-                                                  :use-ratio use-ratio)
-          (with-slots (result expected) class-result
-            (when (eq result expected)
-              (incf success))
-            (incf count)))))
+      (dolist (learn-offset-ratio (remove test-offset-ratio offset-ratio-lst))
+        (setf store
+              (learn test-file
+                     :offset-ratio learn-offset-ratio
+                     :use-ratio use-ratio
+                     :store store)))
+      (do-classified-result store (class-result test-file
+                                                :offset-ratio test-offset-ratio
+                                                :use-ratio use-ratio)
+        (with-slots (result expected) class-result
+          (when (eq result expected)
+            (incf success))
+          (incf count))))
     (let* ((ave (float (/ success count)))
            (confidence (* 1.96 (sqrt (* ave (- 1 ave) (/ 1 count))))))
       (values ave confidence))))
