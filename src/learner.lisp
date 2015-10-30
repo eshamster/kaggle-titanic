@@ -25,10 +25,17 @@
                 :with-gensyms))
 (in-package :kaggle-titanic.learner)
 
+(defgeneric clone-empty-store (store))
+
 (defstruct classifier
   (store (nbayes:make-learned-store))
   (weight 0)
   process-line)
+
+(defmethod clone-empty-store ((store classifier))
+  (with-slots (weight process-line) store
+    (make-classifier :weight weight
+                     :process-line process-line)))
 
 (defmacro def-simple-converter (&rest target-lst)
   (with-gensyms (header line)
@@ -44,38 +51,10 @@
 
 (defstruct ensembler
   (lst (def-simple-classifiers
-           ("Pclass" "Sex" "Sex-Age" "Age")
-           ("Fare" "Cabin"))))
-
-(defparameter *max-ratio* 1)
-
-(let ((cache))
-  (defun init-ensembler ()
-    (labels ((make-from-cache ()
-               (when cache
-                 (let ((result (make-ensembler)))
-                   (dolist (classifier (ensembler-lst cache))
-                     (with-slots (weight process-line) classifier
-                       (push (make-classifier :weight weight
-                                              :process-line process-line)
-                             (ensembler-lst result))))
-                   result)))
-             (make-new ()
-               (setf cache
-                     (let ((result (make-ensembler)))
-                       (dolist (classifier (ensembler-lst result))
-                         (format t "weight: ~A~%"
-                                 (setf (classifier-weight classifier)
-                                        ; TODO: take the path out
-                                       (- (cross-validate #p"resources/train.csv"
-                                                          :max-ratio *max-ratio*
-                                                          :store classifier)
-                                          0.5))))
-                       result))
-               (make-from-cache)))
-      (aif (make-from-cache)
-           it
-           (make-new)))))
+           ("Pclass" "Name" "Sex" "Sex-Age" "Age" "SibSp-Parch" "Parch" "SibSp" "Ticket" "Cabin" "Cabin2" "Embarked")
+;           ("Pclass" "Sex" "Sex-Age" "Age")
+;           ("Fare" "Cabin")
+           )))
 
 (defun process-line (head-line line)
   (convert-raw-data-one-line head-line line
@@ -94,6 +73,40 @@
     ("Cabin" (add-name "Cabin" (extract-cabin it)))
     ("Cabin" (add-name "Cabin-raw" it))
     ("Embarked" (add-name "Emb" it))))
+
+(defparameter *max-ratio* 1)
+
+(let ((cache))
+  (defun init-ensembler ()
+    (labels ((make-from-cache ()
+               (when cache
+                 (let ((result (make-ensembler)))
+                   (dolist (classifier (ensembler-lst cache))
+                     (push (clone-empty-store classifier)
+                           (ensembler-lst result)))
+                   result)))
+             (make-new ()
+               (setf cache
+                     (let ((result (make-ensembler)))
+                       (dolist (classifier (ensembler-lst result))
+                         (format t "weight: ~A~%"
+                                 (setf (classifier-weight classifier)
+                                        ; TODO: take the path out
+                                       (- (cross-validate #p"resources/train.csv"
+                                                          :max-ratio *max-ratio*
+                                                          :store classifier)
+                                          0.5))))
+                       result))
+               (make-from-cache)))
+      (aif (make-from-cache)
+           it
+           (make-new)))))
+
+"Note: Now ensembler has only one kind.
+       So, in this clone-empty-store, return the result of init-ensembler."
+(defmethod clone-empty-store ((store ensembler))
+  (declare (ignore store))
+  (init-ensembler))
 
 (defgeneric learn-a-classifier (store category line header))
 
@@ -195,8 +208,10 @@
                                                 :use-ratio use-ratio)
         (with-slots (result expected) class-result
           (when (eq result expected)
-            (incf success))
-          (incf count))))
+            (incf success)))
+        (incf count))
+      (setf store (clone-empty-store store)))
     (let* ((ave (float (/ success count)))
            (confidence (* 1.96 (sqrt (* ave (- 1 ave) (/ 1 count))))))
+      (format t "~A/~A~%" success count)
       (values ave confidence))))
