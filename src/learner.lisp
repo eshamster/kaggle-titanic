@@ -175,7 +175,8 @@
                        (- 1 (classify-result-certainty mid-result)))))
           (incf sum-weight (classifier-weight classifier))))
       (setf certainty (/ certainty sum-weight))
-      (setf result (if (> certainty 0.5) 1 0)))
+      (setf result (if (> certainty 0.5) 1 0))
+      (setf certainty (max certainty (- 1 certainty))))
     result))
 
 (defmacro do-classified-result (store (result test-path &key
