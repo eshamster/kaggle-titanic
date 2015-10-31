@@ -152,11 +152,12 @@
                      (remove-if #'null (funcall (classifier-process-line store)
                                                 (cddr header)
                                                 (cddr line))))))
-    (setf (classify-result-id result) (car line))
-    (setf (classify-result-expected result) (aif (cadr line)
-                                                 (parse-integer it)))
-    (setf (classify-result-result result) (parse-integer (caar raw-result)))
-    (setf (classify-result-certainty result) (cdar raw-result))
+    (with-slots (id result expected certainty) result
+      (setf id (car line))
+      (setf expected (aif (cadr line)
+                          (parse-integer it)))
+      (setf result (parse-integer (caar raw-result)))
+      (setf certainty (cdar raw-result)))
     result))
 
 (defmethod classify ((store ensembler) line header)
